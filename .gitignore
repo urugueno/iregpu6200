@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# データ・モデル（サイズが大きいもの）
+data/
+datasets/
+*.csv
+*.h5
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.npy
+*.npz
+
+# ログ・出力
+logs/
+outputs/
+runs/
+wandb/
+*.log
+
+# 環境設定・秘密情報
+.env
+*.key
+config/secrets.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# エディタ
+.vscode/
+.idea/
