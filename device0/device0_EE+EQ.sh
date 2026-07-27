@@ -6,4 +6,4 @@ CUDA_VISIBLE_DEVICES=1 python -u Illuminance_bbox/main.py \
     --num_queries 10 --enc_layers 3 --dec_layers 3 --num_classes 4 --environment PE_query \
     --num_sensors 36 --k_neighbors 36 --exp_name tmp_EE_EQ --sensor_dropout_rate 0.1 --random_sensors;
 
-# nohup ./device0_EE+EQ.sh > ./device0_EE+EQ.txt &
+# nohup ./device0/device0_EE+EQ.sh > ./device0/device0_EE+EQ.txt &
