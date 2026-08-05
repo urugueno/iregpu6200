@@ -23,15 +23,16 @@ def box_cxcywhd_to_xyzxyz(x):
 
 class EnvQueryCNN(nn.Module):
     """
-    環境ベクトル [B, N] を受け取り、クエリ用のPE [B, C] を出力するCNN (MLP)
+    環境ベクトル [B, N, T] を受け取り、クエリ用のPE [B, C] を出力するMLP
     """
     def __init__(self, input_dim, hidden_dim, output_dim):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_dim, output_dim)
-        
+
     def forward(self, x):
+        x = torch.flatten(x, start_dim=1)
         x = self.relu(self.fc1(x))
         return self.fc2(x)
 
@@ -56,13 +57,13 @@ class DETR(nn.Module):
         if self.args is not None:
             if self.args.environment == 'query':
                 self.env_query_cnn = EnvQueryCNN(
-                    input_dim=self.args.actual_num_sensors,
+                    input_dim=self.args.actual_num_sensors * self.args.env_seq_len,
                     hidden_dim=hidden_dim,
                     output_dim=hidden_dim
                 )
             elif self.args.environment == 'sequence':
                 self.env_seq_proj = EnvQueryCNN(
-                    input_dim=self.args.actual_num_sensors,
+                    input_dim=self.args.actual_num_sensors * self.args.env_seq_len,
                     hidden_dim=hidden_dim,
                     output_dim=hidden_dim
                 )

@@ -1,0 +1,15 @@
+[2026-08-04] Illuminance_bbox/datasets/illuminance.py (mean environment vector branch, around line 268-286)
+- 変更内容: 'else' ブランチ（mean environment vector 計算部分）で raw_vec_tensor.mean(dim=1) による平均計算を廃止し、raw_vec_tensor（センサーごとの生の時系列データ）をそのまま aligned_vector に代入するように変更。
+- 影響: aligned_vector の shape が (N_selected,) から (N_selected, T)（T=時系列長）に変化。self.environment_vectors の各要素、および target['env_vector'] (line ~358) で参照される値の次元数が増える。
+
+[2026-08-04] モデル側の追従修正（上記変更に伴う env_vector shape 変化への対応）
+- 発見した問題: environment.csv の時系列長Tがデータセットフォルダごとに異なる（実測: 1_tsunoda_1_train=450, sim_test_01/loop1=665, sim_lecture_02/loop1=333）。device3.sh 等は複数フォルダを同一学習runで混在させるため、生の時系列をそのまま使うと util/misc.py の torch.stack でshape不一致エラーになる。ユーザーと相談の上、「固定長へリサンプリング」方式を採用。
+- main.py: 新規引数 --env_seq_len (int, default=333) を追加。'PE'/'query'/'sequence' モードで環境ベクトルをリサンプリングする際の共通の固定長。performance.py は main.get_args_parser() を再利用しているため自動的に反映される。
+- datasets/illuminance.py: `import torch.nn.functional as F` を追加。mean environment vector 計算箇所（'else' ブランチ）で、raw_vec_tensor を F.interpolate(mode='linear') により args.env_seq_len の固定長にリサンプリングしてから aligned_vector に格納するよう変更。aligned_vector の shape は (N_selected, env_seq_len) で全データセット共通になる。
+- util/misc.py (collate_fn): env_vector が見つからない場合のフォールバック zeros のshapeを [B, N] から [B, N, args.env_seq_len] に修正。
+- models/detr.py: EnvQueryCNN.forward で入力を torch.flatten(x, start_dim=1) してから fc1 に通すよう変更（[B, N, T] -> [B, N*T] -> [B, C]）。'query'/'sequence' モードでのインスタンス化時の input_dim を actual_num_sensors から actual_num_sensors * args.env_seq_len に変更。
+- models/backbone.py: 'PE' モード用の env_projection (nn.Linear) 2箇所（IlluminanceBackbone系, TimeSensorBackbone）で、input_dim を num_sensors から num_sensors * args.env_seq_len に変更し、forward側で env_vector を torch.flatten(env_vector, start_dim=1) してから渡すように変更。
+
+[2026-08-04] 動作確認（スモークテスト）
+- コマンド: conda activate light_env の上で、device3_EQ.sh 相当の設定（--environment query, --train に T=450 の keita_2026_0617/1_tsunoda_1_train と T=665 の sim_test_01/loop1 を同時指定）を --epochs 1 --n_runs 1 --env_seq_len 50 --exp_name real_sim_EQ_smoketest に変更して実行。出力は device3/device3_test_len50.txt。
+- 結果: exit code 0。異なるTのデータセットを混在させても torch.stack のshape不一致エラーは発生せず、EnvQueryCNN（flatten+Linear）経由で正常に1 epoch分の学習・検証が完走（Epoch 0: loss 884→11、Val loss_ce/loss_bboxとも有限値）。env_seq_len によるリサンプリング方式が機能することを確認。

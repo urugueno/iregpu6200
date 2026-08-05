@@ -121,6 +121,8 @@ def get_args_parser():
     parser.add_argument('--environment', type=str, default='none',
                     choices=['none', 'PE', 'query', 'PE_query', 'sub', 'sequence'],
                     help="How to use the environment.csv data. 'PE': positional encoding. 'query': add to queries. 'sub': spectral subtraction.")
+    parser.add_argument('--env_seq_len', type=int, default=333,
+                    help="Fixed length that raw per-sensor environment.csv time series are resampled to for 'PE'/'query'/'sequence' modes (dataset environment.csv files have varying lengths).")
     # parser.add_argument('--environment', type=str, default='none',
     #                     choices=['none', 'PE', 'query', 'sub', 'sequence'],
     #                     help="How to use the environment.csv data. 'PE': positional encoding. 'query': add to queries. 'sub': spectral subtraction.")

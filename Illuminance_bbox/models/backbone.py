@@ -247,7 +247,7 @@ class DirectSensorBackbone(nn.Module):
 
         self.env_projection = None
         if self.args.environment == 'PE':
-            self.env_projection = nn.Linear(self.args.actual_num_sensors, hidden_dim)
+            self.env_projection = nn.Linear(self.args.actual_num_sensors * self.args.env_seq_len, hidden_dim)
 
     def forward(self, samples_dict):
         illuminance = samples_dict['tensors']
@@ -263,8 +263,8 @@ class DirectSensorBackbone(nn.Module):
 
         if self.args.environment == 'PE':
             env_vector = samples_dict['env_vector']
-            env_pe = self.env_projection(env_vector)
-            
+            env_pe = self.env_projection(torch.flatten(env_vector, start_dim=1))
+
             pos = pos + env_pe.unsqueeze(1)
         
         features_reshaped = features.permute(0, 2, 1).unsqueeze(-1)
@@ -408,7 +408,7 @@ class TimeSensorBackbone(nn.Module):
 
         self.env_projection = None
         if self.args.environment == 'PE':
-            self.env_projection = nn.Linear(num_sensors, hidden_dim)
+            self.env_projection = nn.Linear(num_sensors * self.args.env_seq_len, hidden_dim)
 
         self.reduction_cnn = None
         if self.scale == 'reductionCNNmse':
@@ -486,7 +486,7 @@ class TimeSensorBackbone(nn.Module):
         env_pe = None
         if self.args.environment == 'PE':
             env_vector = samples_dict['env_vector']
-            env_pe = self.env_projection(env_vector)
+            env_pe = self.env_projection(torch.flatten(env_vector, start_dim=1))
         predicted_center_coords = None
         selected_sensor_indices = None
 

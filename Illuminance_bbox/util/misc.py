@@ -304,8 +304,8 @@ def collate_fn(batch, args, split):
                 print(f"Warning: 'env_vector' not found in target for mode 'sub'. Using zeros [B, N, FreqBins].")
                 env_vector_batch = torch.zeros(B, N, FreqBins, device=illuminance_batch.device)
             else:
-                print(f"Warning: 'env_vector' not found in target for mode {args.environment}. Using zeros [B, N].")
-                env_vector_batch = torch.zeros(B, N, device=illuminance_batch.device)
+                print(f"Warning: 'env_vector' not found in target for mode {args.environment}. Using zeros [B, N, env_seq_len].")
+                env_vector_batch = torch.zeros(B, N, args.env_seq_len, device=illuminance_batch.device)
 
     if args.environment == 'sub':
         fft_signal = torch.fft.rfft(illuminance_batch, dim=2)
