@@ -13,3 +13,20 @@
 [2026-08-04] 動作確認（スモークテスト）
 - コマンド: conda activate light_env の上で、device3_EQ.sh 相当の設定（--environment query, --train に T=450 の keita_2026_0617/1_tsunoda_1_train と T=665 の sim_test_01/loop1 を同時指定）を --epochs 1 --n_runs 1 --env_seq_len 50 --exp_name real_sim_EQ_smoketest に変更して実行。出力は device3/device3_test_len50.txt。
 - 結果: exit code 0。異なるTのデータセットを混在させても torch.stack のshape不一致エラーは発生せず、EnvQueryCNN（flatten+Linear）経由で正常に1 epoch分の学習・検証が完走（Epoch 0: loss 884→11、Val loss_ce/loss_bboxとも有限値）。env_seq_len によるリサンプリング方式が機能することを確認。
+
+[2026-08-05] 環境ベクトルのモデルを 3D CNN（時間・空間同時畳み込み）に変更
+- 変更理由: ユーザー提示のuse3dconv.py案（Conv3d×2 -> squeeze -> Conv2d(1x1) -> Flatten -> Linear）を採用。センサーを空間グリッド上に配置し、時間軸も含めて3D Convで同時に読み込む方式に変更。
+- datasets/illuminance.py: mean environment vector 計算箇所（'else' ブランチ）で、aligned_vector の shape を (N_selected, env_seq_len) から (env_seq_len, grid_size, grid_size) に変更。各センサーのカラム名 "x,y"（例: "0.4,1.0"）を args.grid_size（デフォルト6）に基づき row=round(x*(grid_size-1)), col=round(y*(grid_size-1)) でグリッド座標に変換し、resample済みの時系列を aligned_vector[:, row, col] に代入。未選択/不足センサー位置はゼロ埋め。
+- models/backbone.py: 新規クラス Env3DCNN を追加（GumbelSelectorCNNの直後、IlluminanceBackboneの直前）。forward: [B,k,H,W] -> unsqueeze(1) -> Conv3d(1->3)+ReLU -> Conv3d(3->1)+ReLU -> squeeze(1) -> Conv2d(k->3,kernel=1)+ReLU -> Flatten -> Linear(3*grid_size*grid_size, output_dim)。DirectSensorBackbone/TimeSensorBackboneの 'PE' モード用 env_projection (旧nn.Linear) を Env3DCNN(k=args.env_seq_len, grid_size=args.grid_size, output_dim=hidden_dim) に置き換え、forward側の torch.flatten 呼び出しを削除（[B,k,H,W]をそのまま渡す）。
+- models/detr.py: 旧 EnvQueryCNN クラスをコメントアウト（削除ではなくコメントアウトで残す、ユーザー指示）。from .backbone import build_backbone, Env3DCNN に変更。'query'/'sequence' モードでのインスタンス化を EnvQueryCNN(input_dim=...) から Env3DCNN(k=args.env_seq_len, grid_size=args.grid_size, output_dim=hidden_dim) に変更。forward側の呼び出し (self.env_query_cnn(env_vector) 等) はshapeが直接一致するため変更不要。
+- util/misc.py (collate_fn): env_vector 欠損時のフォールバック zeros を [B, N, env_seq_len] から [B, env_seq_len, grid_size, grid_size] に変更。
+- 動作確認: device3_EQ.sh 相当設定（--environment query, T=450とT=665のデータセット混在, --env_seq_len 50 --grid_size 6, --epochs 1）で実行し exit code 0。ログに "Using raw environment vectors as a 6x6 spatial grid, resampled to fixed length 50..." が出力され、Epoch 0の学習・検証が正常に完走（loss: 23.0→8.8）。出力: device3/device3_3dcnn_smoketest.txt。
+
+[2026-08-05] device3_EE_EQ.sh 作成にあたり発見した既存バグ（--environment PE_query が無効化されていた）を修正
+- 発見した問題: device1/device1_EE+EQ.sh が使っている --environment PE_query は、main.pyのargparseのchoicesには存在するが、実際の処理コードのどこにも 'PE_query' に対する分岐が無く、util/misc.py の collate_fn 内 `if args.environment in ['PE', 'query', 'sequence']:` にも含まれていなかったため、env_vectorが計算されても samples['env_vector'] に格納されず、PE/queryどちらの注入経路も発火しない状態だった（実質 --environment none と同じ動作）。この問題は今回のEnv3DCNN導入以前から存在していた既存バグ。
+- 修正内容（'PE_query' のときにPEとqueryを両方同時に有効化する形に変更）:
+  - util/misc.py: `if args.environment in ['PE', 'query', 'sequence']:` に 'PE_query' を追加。
+  - models/backbone.py: DirectSensorBackbone / TimeSensorBackbone の env_projection 初期化条件・forward内の条件（計3クラス×各2箇所、計5箇所）を `== 'PE'` から `in ('PE', 'PE_query')` に変更。
+  - models/detr.py: DETR.__init__ の env_query_cnn 初期化条件を `== 'query'` から `in ('query', 'PE_query')` に変更（'sequence'はelifのままなので競合しない）。
+- 動作確認: --environment PE_query, --env_seq_len 25 --grid_size 6, --epochs 1 で実行し exit code 0。PE用・query用の両方のEnv3DCNNが有効化された状態で学習・検証が正常に完走。出力: device3/device3_EE_EQ_smoketest.txt。
+- device3/device3_EE_EQ.sh を新規作成（device1/device1_EE+EQ.shを参考に、device3の設定（train: 1_tsunoda_1_train + sim_test_01/loop1, env_seq_len 25, gpu 1）に合わせて --environment PE_query で実行するスクリプト）。実行権限も付与済み。

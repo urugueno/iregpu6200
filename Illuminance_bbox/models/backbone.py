@@ -211,6 +211,32 @@ class GumbelSelectorCNN(nn.Module):
         x = self.fc2(x)
         return x
 
+class Env3DCNN(nn.Module):
+    """
+    環境ベクトル [B, k, H, W]（k=時間スライス数、H×W=センサーの空間グリッド）を
+    3D Convで時間・空間を同時に畳み込み、[B, C] のPE/クエリベクトルに変換する。
+    """
+    def __init__(self, k, grid_size, output_dim):
+        super().__init__()
+        self.conv3d = nn.Sequential(
+            nn.Conv3d(1, 3, (3, 3, 3), stride=1, padding=1, bias=True, padding_mode='replicate'),
+            nn.ReLU(),
+            nn.Conv3d(3, 1, (3, 3, 3), stride=1, padding=1, bias=True, padding_mode='replicate'),
+            nn.ReLU(),
+        )
+        self.conv2d = nn.Sequential(
+            nn.Conv2d(k, 3, 1, stride=1, padding=0, bias=True),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(3 * grid_size * grid_size, output_dim),
+        )
+
+    def forward(self, x):
+        x = x.unsqueeze(1)   # [B, 1, k, H, W]
+        x = self.conv3d(x)
+        x = x.squeeze(1)     # [B, k, H, W]
+        return self.conv2d(x)
+
 class IlluminanceBackbone(nn.Module):
     def __init__(self, window_size, hidden_dim):
         super().__init__()
@@ -246,13 +272,13 @@ class DirectSensorBackbone(nn.Module):
             self.position_embedding = PositionEmbeddingFromCoords(hidden_dim // 2)
 
         self.env_projection = None
-        if self.args.environment == 'PE':
-            self.env_projection = nn.Linear(self.args.actual_num_sensors * self.args.env_seq_len, hidden_dim)
+        if self.args.environment in ('PE', 'PE_query'):
+            self.env_projection = Env3DCNN(k=self.args.env_seq_len, grid_size=self.args.grid_size, output_dim=hidden_dim)
 
     def forward(self, samples_dict):
         illuminance = samples_dict['tensors']
         B, N, W = illuminance.shape
-        
+
         features = self.projection(illuminance)
 
         if self.model_mode == 'sensor':
@@ -261,9 +287,9 @@ class DirectSensorBackbone(nn.Module):
         elif self.model_mode == 'sensor_no_pe':
             pos = torch.zeros_like(features)
 
-        if self.args.environment == 'PE':
+        if self.args.environment in ('PE', 'PE_query'):
             env_vector = samples_dict['env_vector']
-            env_pe = self.env_projection(torch.flatten(env_vector, start_dim=1))
+            env_pe = self.env_projection(env_vector)
 
             pos = pos + env_pe.unsqueeze(1)
         
@@ -407,8 +433,8 @@ class TimeSensorBackbone(nn.Module):
         self.model_mode = model_mode
 
         self.env_projection = None
-        if self.args.environment == 'PE':
-            self.env_projection = nn.Linear(num_sensors * self.args.env_seq_len, hidden_dim)
+        if self.args.environment in ('PE', 'PE_query'):
+            self.env_projection = Env3DCNN(k=self.args.env_seq_len, grid_size=self.args.grid_size, output_dim=hidden_dim)
 
         self.reduction_cnn = None
         if self.scale == 'reductionCNNmse':
@@ -484,9 +510,9 @@ class TimeSensorBackbone(nn.Module):
         B, N, W = illuminance.shape
         C = self.num_channels
         env_pe = None
-        if self.args.environment == 'PE':
+        if self.args.environment in ('PE', 'PE_query'):
             env_vector = samples_dict['env_vector']
-            env_pe = self.env_projection(torch.flatten(env_vector, start_dim=1))
+            env_pe = self.env_projection(env_vector)
         predicted_center_coords = None
         selected_sensor_indices = None
 
@@ -617,7 +643,7 @@ class TimeSensorBackbone(nn.Module):
             spatial_pe = self.spatial_pe_generator(coords)
             total_pe = total_pe + spatial_pe.unsqueeze(1)
 
-        if self.args.environment == 'PE' and env_pe is not None:
+        if self.args.environment in ('PE', 'PE_query') and env_pe is not None:
             total_pe = total_pe + env_pe.unsqueeze(1).unsqueeze(2)
         features_reshaped = features.permute(0, 3, 1, 2)
         pos_reshaped = total_pe.permute(0, 3, 1, 2)

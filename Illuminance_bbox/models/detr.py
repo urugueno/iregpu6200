@@ -10,7 +10,7 @@ from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
                        accuracy, get_world_size, interpolate,
                        is_dist_avail_and_initialized)
 
-from .backbone import build_backbone
+from .backbone import build_backbone, Env3DCNN
 from .matcher import build_matcher
 from .transformer import build_transformer
 
@@ -21,20 +21,20 @@ def box_cxcywhd_to_xyzxyz(x):
          cx + 0.5 * w, cy + 0.5 * h, cz + 0.5 * d]
     return torch.stack(b, dim=-1)
 
-class EnvQueryCNN(nn.Module):
-    """
-    環境ベクトル [B, N, T] を受け取り、クエリ用のPE [B, C] を出力するMLP
-    """
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super().__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, x):
-        x = torch.flatten(x, start_dim=1)
-        x = self.relu(self.fc1(x))
-        return self.fc2(x)
+# class EnvQueryCNN(nn.Module):
+#     """
+#     環境ベクトル [B, N, T] を受け取り、クエリ用のPE [B, C] を出力するMLP
+#     """
+#     def __init__(self, input_dim, hidden_dim, output_dim):
+#         super().__init__()
+#         self.fc1 = nn.Linear(input_dim, hidden_dim)
+#         self.relu = nn.ReLU()
+#         self.fc2 = nn.Linear(hidden_dim, output_dim)
+#
+#     def forward(self, x):
+#         x = torch.flatten(x, start_dim=1)
+#         x = self.relu(self.fc1(x))
+#         return self.fc2(x)
 
 class DETR(nn.Module):
     def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False, args=None):
@@ -55,16 +55,16 @@ class DETR(nn.Module):
         self.env_seq_pe = None
 
         if self.args is not None:
-            if self.args.environment == 'query':
-                self.env_query_cnn = EnvQueryCNN(
-                    input_dim=self.args.actual_num_sensors * self.args.env_seq_len,
-                    hidden_dim=hidden_dim,
+            if self.args.environment in ('query', 'PE_query'):
+                self.env_query_cnn = Env3DCNN(
+                    k=self.args.env_seq_len,
+                    grid_size=self.args.grid_size,
                     output_dim=hidden_dim
                 )
             elif self.args.environment == 'sequence':
-                self.env_seq_proj = EnvQueryCNN(
-                    input_dim=self.args.actual_num_sensors * self.args.env_seq_len,
-                    hidden_dim=hidden_dim,
+                self.env_seq_proj = Env3DCNN(
+                    k=self.args.env_seq_len,
+                    grid_size=self.args.grid_size,
                     output_dim=hidden_dim
                 )
                 self.env_seq_pe = nn.Parameter(torch.zeros(1, hidden_dim, 1, 1), requires_grad=False)
