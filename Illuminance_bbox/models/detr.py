@@ -10,7 +10,7 @@ from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
                        accuracy, get_world_size, interpolate,
                        is_dist_avail_and_initialized)
 
-from .backbone import build_backbone, Env3DCNN
+from .backbone import build_backbone, build_env_feature_extractor
 from .matcher import build_matcher
 from .transformer import build_transformer
 
@@ -56,17 +56,9 @@ class DETR(nn.Module):
 
         if self.args is not None:
             if self.args.environment in ('query', 'PE_query'):
-                self.env_query_cnn = Env3DCNN(
-                    k=self.args.env_seq_len,
-                    grid_size=self.args.grid_size,
-                    output_dim=hidden_dim
-                )
+                self.env_query_cnn = build_env_feature_extractor(self.args, hidden_dim)
             elif self.args.environment == 'sequence':
-                self.env_seq_proj = Env3DCNN(
-                    k=self.args.env_seq_len,
-                    grid_size=self.args.grid_size,
-                    output_dim=hidden_dim
-                )
+                self.env_seq_proj = build_env_feature_extractor(self.args, hidden_dim)
                 self.env_seq_pe = nn.Parameter(torch.zeros(1, hidden_dim, 1, 1), requires_grad=False)
                 nn.init.xavier_uniform_(self.env_seq_pe)
 

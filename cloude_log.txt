@@ -30,3 +30,20 @@
   - models/detr.py: DETR.__init__ の env_query_cnn 初期化条件を `== 'query'` から `in ('query', 'PE_query')` に変更（'sequence'はelifのままなので競合しない）。
 - 動作確認: --environment PE_query, --env_seq_len 25 --grid_size 6, --epochs 1 で実行し exit code 0。PE用・query用の両方のEnv3DCNNが有効化された状態で学習・検証が正常に完走。出力: device3/device3_EE_EQ_smoketest.txt。
 - device3/device3_EE_EQ.sh を新規作成（device1/device1_EE+EQ.shを参考に、device3の設定（train: 1_tsunoda_1_train + sim_test_01/loop1, env_seq_len 25, gpu 1）に合わせて --environment PE_query で実行するスクリプト）。実行権限も付与済み。
+
+[2026-08-06] 環境ベクトルの特徴抽出器を実行時に切り替え可能に変更（mlp / conv3d / spatial_gru）
+- 変更理由: ユーザー提示のuseGRU.py案（「空間から見て時間」＝各時刻のH×W空間マップに2D Convを独立適用してから時系列としてGRUに通す方式）を3つ目の選択肢として追加し、これまで作った旧EnvQueryCNN相当（mlp）・Env3DCNN（conv3d）と合わせて、シェルスクリプトの変数だけで切り替えられるようにしたいという要望。
+- datasets/illuminance.py: 変更なし。aligned_vectorのビルド処理（[env_seq_len, grid_size, grid_size]のグリッド化）は3モデル共通のインターフェースなので、269行目以降の変換ロジックはそのまま流用可能と確認。
+- main.py: 新規引数 --env_model_type (choices=['mlp','conv3d','spatial_gru'], default='conv3d') を追加。デフォルトは既存スクリプトの挙動を変えないよう既存のconv3d相当を維持。
+- models/backbone.py:
+  - EnvMLP クラスを新規追加（旧EnvQueryCNN相当。[B,k,H,W]をflattenしてから2層MLPに通す形に統一）。
+  - EnvSpatialGRU クラスを新規追加。forward: [B,k,H,W] -> [B*k,1,H,W]にreshapeして2D Conv(1->3->1, kernel3x3, padding=1, replicate)を時間方向で重み共有しつつ各フレーム独立に適用 -> [B,k,H*W]の時系列に戻す -> GRU(num_layers=2, hidden_size=output_dim) -> 最終層の最終隠れ状態h[-1]を[B,output_dim]として返す。元のuseGRU.py例はpadding=0でConv2d後の空間サイズがGRUのinput_size=6*6と不整合になるバグがあったため、padding=1に修正して空間サイズを維持し、input_size=grid_size*grid_size と整合させた（ユーザー確認済みではなく実装判断、必要なら要相談）。
+  - build_env_feature_extractor(args, output_dim) 関数を新規追加。args.env_model_typeに応じてEnvMLP/Env3DCNN/EnvSpatialGRUのいずれかを生成して返すファクトリ。DirectSensorBackbone/TimeSensorBackboneのenv_projection初期化をこの関数呼び出しに統一。
+- models/detr.py: env_query_cnn/env_seq_projの初期化をEnv3DCNNの直接呼び出しからbuild_env_feature_extractor(self.args, hidden_dim)に変更。importをEnv3DCNNからbuild_env_feature_extractorに変更。
+- device3/device3_EE.sh, device3_EQ.sh, device3_EE_EQ.sh: スクリプト先頭に `ENV_MODEL_TYPE=spatial_gru   # mlp | conv3d | spatial_gru` という変数を追加し、`--env_model_type ${ENV_MODEL_TYPE}` として渡すように変更（ユーザー選択によりデフォルトはspatial_gru、exp_nameへの反映はしない）。
+- 動作確認: --environment PE_query, --env_seq_len 25 --grid_size 6, --epochs 1 の条件で --env_model_type を mlp / conv3d / spatial_gru の3通り切り替えて実行し、いずれも exit code 0、1 epoch分の学習・検証が正常に完走。出力: device3/device3_switch_smoketest_{mlp,conv3d,spatial_gru}.txt。
+- ユーザーからの確認依頼を受け、conv3d/mlpが前回（Env3DCNN導入時点、旧EnvQueryCNN）とアーキテクチャ的に一致するか検証。
+  - conv3d: Env3DCNNクラス自体は今回無変更（呼び出し側をbuild_env_feature_extractor経由にしただけ）。実際にスモークテストのログをdiffし、loss/accuracy/iou/f1_score/class_error等の数値がepoch/val全行でbit単位で完全一致することを確認（time/etaのみ差異）。回帰なしを確認。
+  - mlp: 層構成（Linear->ReLU->Linear、サイズも同一）は旧EnvQueryCNNと同じだが、(1) input_dimの算出が「選択センサー数×T」から「grid_size^2×T」に変わった点（--num_sensors 36 = grid_size^2=36の現行実験では数値上一致するが、num_sensors<36の場合は挙動が変わる）、(2) flatten順序が旧「センサー優先→時間」から新「時間優先→センサー」に変わっていた点、の2点の差異をユーザーに報告。
+- EnvMLPのflatten順序を旧EnvQueryCNNに合わせて修正（models/backbone.py）: forward内で x.permute(0,2,3,1) により [B,T,H,W] を [B,H,W,T] にしてからflattenし、「センサー優先→時間」の順になるよう変更。この変更はEnvMLPのforward内のみに閉じており、Env3DCNN/EnvSpatialGRUには影響しない（両者ともflattenという操作自体を行わず、Tを明示的な時間軸として畳み込み/GRUに使う設計のため）ことをユーザーに説明し確認の上で適用。
+- 動作確認: --environment PE_query --env_model_type mlp --env_seq_len 25, --epochs 1 で再実行し exit code 0。出力: device3/device3_switch_smoketest_mlp_reorder.txt。

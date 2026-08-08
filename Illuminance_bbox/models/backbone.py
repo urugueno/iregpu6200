@@ -211,6 +211,27 @@ class GumbelSelectorCNN(nn.Module):
         x = self.fc2(x)
         return x
 
+class EnvMLP(nn.Module):
+    """
+    環境ベクトル [B, k, H, W] を受け取り、flatten + 2層MLPで [B, C] のPE/クエリベクトルに変換する。
+    センサーの空間配置も時間順序も考慮せず、全要素をベタなベクトルとして扱う最も単純な方式。
+    """
+    def __init__(self, k, grid_size, output_dim):
+        super().__init__()
+        input_dim = k * grid_size * grid_size
+        self.fc1 = nn.Linear(input_dim, output_dim)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(output_dim, output_dim)
+
+    def forward(self, x):
+        # x: [B, T, H, W] -> [B, H, W, T] にしてからflattenすることで、
+        # 旧EnvQueryCNNと同じ「センサーごとにまとめてから時間方向」という並び順にする
+        # （時刻優先ではなくセンサー優先）。
+        x = x.permute(0, 2, 3, 1)
+        x = torch.flatten(x, start_dim=1)   # [B, H*W*T]
+        x = self.relu(self.fc1(x))
+        return self.fc2(x)
+
 class Env3DCNN(nn.Module):
     """
     環境ベクトル [B, k, H, W]（k=時間スライス数、H×W=センサーの空間グリッド）を
@@ -236,6 +257,45 @@ class Env3DCNN(nn.Module):
         x = self.conv3d(x)
         x = x.squeeze(1)     # [B, k, H, W]
         return self.conv2d(x)
+
+class EnvSpatialGRU(nn.Module):
+    """
+    環境ベクトル [B, k, H, W] を「空間から見て時間」の順で処理する。
+    各時刻のH×W空間マップに2D Convを独立に（時間方向で重み共有して）適用して空間特徴を抽出し、
+    flattenした時系列をGRUに通して時間方向の変化を [B, C] に集約する。
+    """
+    def __init__(self, k, grid_size, output_dim, num_layers=2):
+        super().__init__()
+        self.conv2d = nn.Sequential(
+            nn.Conv2d(1, 3, (3, 3), stride=1, padding=1, bias=True, padding_mode='replicate'),
+            nn.ReLU(),
+            nn.Conv2d(3, 1, (3, 3), stride=1, padding=1, bias=True, padding_mode='replicate'),
+        )
+        self.gru = nn.GRU(
+            input_size=grid_size * grid_size,
+            hidden_size=output_dim,
+            num_layers=num_layers,
+            batch_first=True,
+        )
+
+    def forward(self, x):
+        B, k, H, W = x.shape
+        x = x.reshape(B * k, 1, H, W)        # 各フレームを独立に2D Convへ（時間方向は重み共有）
+        x = self.conv2d(x)                   # [B*k, 1, H, W] (padding=1で空間サイズを維持)
+        x = x.reshape(B, k, H * W)           # [B, k, H*W] 時系列として並べ直す
+        _, h = self.gru(x)                   # h: [num_layers, B, output_dim]
+        return h[-1]                         # 最終層の最終時刻の隠れ状態
+
+def build_env_feature_extractor(args, output_dim):
+    """args.env_model_type に応じて環境ベクトル用の特徴抽出器を切り替える。"""
+    if args.env_model_type == 'mlp':
+        return EnvMLP(k=args.env_seq_len, grid_size=args.grid_size, output_dim=output_dim)
+    elif args.env_model_type == 'conv3d':
+        return Env3DCNN(k=args.env_seq_len, grid_size=args.grid_size, output_dim=output_dim)
+    elif args.env_model_type == 'spatial_gru':
+        return EnvSpatialGRU(k=args.env_seq_len, grid_size=args.grid_size, output_dim=output_dim)
+    else:
+        raise ValueError(f"Unknown env_model_type: {args.env_model_type}")
 
 class IlluminanceBackbone(nn.Module):
     def __init__(self, window_size, hidden_dim):
@@ -273,7 +333,7 @@ class DirectSensorBackbone(nn.Module):
 
         self.env_projection = None
         if self.args.environment in ('PE', 'PE_query'):
-            self.env_projection = Env3DCNN(k=self.args.env_seq_len, grid_size=self.args.grid_size, output_dim=hidden_dim)
+            self.env_projection = build_env_feature_extractor(self.args, hidden_dim)
 
     def forward(self, samples_dict):
         illuminance = samples_dict['tensors']
@@ -434,7 +494,7 @@ class TimeSensorBackbone(nn.Module):
 
         self.env_projection = None
         if self.args.environment in ('PE', 'PE_query'):
-            self.env_projection = Env3DCNN(k=self.args.env_seq_len, grid_size=self.args.grid_size, output_dim=hidden_dim)
+            self.env_projection = build_env_feature_extractor(self.args, hidden_dim)
 
         self.reduction_cnn = None
         if self.scale == 'reductionCNNmse':
