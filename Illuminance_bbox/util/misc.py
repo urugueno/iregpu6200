@@ -326,7 +326,7 @@ def collate_fn(batch, args, split):
         'sensor_padding_mask': sensor_padding_mask
     }
     
-    if args.environment in ['PE', 'query', 'sequence']:
+    if args.environment in ['PE', 'query', 'sequence', 'PE_query']:
         samples['env_vector'] = env_vector_batch
     
     return samples, targets

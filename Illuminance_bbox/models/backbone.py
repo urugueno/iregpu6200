@@ -246,7 +246,7 @@ class DirectSensorBackbone(nn.Module):
             self.position_embedding = PositionEmbeddingFromCoords(hidden_dim // 2)
 
         self.env_projection = None
-        if self.args.environment == 'PE':
+        if self.args.environment in ('PE', 'PE_query'):
             self.env_projection = nn.Linear(self.args.actual_num_sensors, hidden_dim)
 
     def forward(self, samples_dict):
@@ -261,10 +261,10 @@ class DirectSensorBackbone(nn.Module):
         elif self.model_mode == 'sensor_no_pe':
             pos = torch.zeros_like(features)
 
-        if self.args.environment == 'PE':
+        if self.args.environment in ('PE', 'PE_query'):
             env_vector = samples_dict['env_vector']
             env_pe = self.env_projection(env_vector)
-            
+
             pos = pos + env_pe.unsqueeze(1)
         
         features_reshaped = features.permute(0, 2, 1).unsqueeze(-1)
@@ -407,7 +407,7 @@ class TimeSensorBackbone(nn.Module):
         self.model_mode = model_mode
 
         self.env_projection = None
-        if self.args.environment == 'PE':
+        if self.args.environment in ('PE', 'PE_query'):
             self.env_projection = nn.Linear(num_sensors, hidden_dim)
 
         self.reduction_cnn = None
@@ -484,7 +484,7 @@ class TimeSensorBackbone(nn.Module):
         B, N, W = illuminance.shape
         C = self.num_channels
         env_pe = None
-        if self.args.environment == 'PE':
+        if self.args.environment in ('PE', 'PE_query'):
             env_vector = samples_dict['env_vector']
             env_pe = self.env_projection(env_vector)
         predicted_center_coords = None
@@ -617,7 +617,7 @@ class TimeSensorBackbone(nn.Module):
             spatial_pe = self.spatial_pe_generator(coords)
             total_pe = total_pe + spatial_pe.unsqueeze(1)
 
-        if self.args.environment == 'PE' and env_pe is not None:
+        if self.args.environment in ('PE', 'PE_query') and env_pe is not None:
             total_pe = total_pe + env_pe.unsqueeze(1).unsqueeze(2)
         features_reshaped = features.permute(0, 3, 1, 2)
         pos_reshaped = total_pe.permute(0, 3, 1, 2)

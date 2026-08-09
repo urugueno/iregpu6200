@@ -1,0 +1,10 @@
+CUDA_VISIBLE_DEVICES=2 python -u Illuminance_bbox/main.py \
+    --train keita_2026_0617/1_tsunoda_1_train sim_test_01/loop1 \
+    --val   keita_2026_0617/1_tsunoda_1_val \
+    --test  keita_2026_0617/1_tsunoda_1_test \
+    --batch_size 256 --epochs 1000000 --dataset_file illuminance --backbone illuminance \
+    --early_stopping_patience 50 --standardize --n_runs 3 \
+    --window_size 41 --sub_window_size 37 --stride 1 --scale full --model_mode time_sensor \
+    --num_queries 10 --enc_layers 3 --dec_layers 3 --num_classes 4 --environment PE_query \
+    --num_sensors 36 --k_neighbors 36 --exp_name real_sim_EE --sensor_dropout_rate 0.1 --random_sensors \
+    --gpu 2;    
