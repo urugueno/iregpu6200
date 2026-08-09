@@ -8,7 +8,7 @@ venv/
 
 # データ・モデル（サイズが大きいもの）
 data/
-datasets/
+/datasets/
 *.csv
 *.h5
 *.pth
