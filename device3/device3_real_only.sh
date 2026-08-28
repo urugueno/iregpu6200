@@ -1,5 +1,5 @@
 CUDA_VISIBLE_DEVICES=1 python -u Illuminance_bbox/main.py \
-    --train keita_2026_0617/1_tsunoda_1_train sim_test_01/loop1  \
+    --train keita_2026_0617/1_tsunoda_1_train \
     --val   keita_2026_0617/1_tsunoda_1_val \
     --test  keita_2026_0617/1_tsunoda_1_test \
     --batch_size 256 --epochs 1000000 --dataset_file illuminance --backbone illuminance \
