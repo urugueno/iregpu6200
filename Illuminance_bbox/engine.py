@@ -79,6 +79,9 @@ def compute_batch_matching_stats(outputs, targets, indices):
     device = outputs['pred_logits'].device
 
     batch_idx, pred_idx = _get_permutation_idx(indices)
+    # matcher(scipy/Hungarian)が返すindicesはCPU上のテンソルなので、
+    # GPU上のcounts等へのscatter_add_でデバイス不一致にならないよう明示的に移す。
+    batch_idx = batch_idx.to(device)
     tgt_idx = torch.cat([tgt for (_, tgt) in indices])
 
     tgt_labels = torch.cat([t['labels'][tgt] for t, (_, tgt) in zip(targets, indices)])
@@ -581,4 +584,6 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         df_preds.to_csv(os.path.join(output_dir, prediction_filename), index=False)
         print(f"Predictions saved to {os.path.join(output_dir, prediction_filename)}\n")
 
-    return stats, _, df_preds, df_coords
+    # 2番目の戻り値はどの呼び出し側でも使われていないプレースホルダ
+    # (以前は未定義の `_` を返しておりNameErrorの原因だった)。
+    return stats, None, df_preds, df_coords
