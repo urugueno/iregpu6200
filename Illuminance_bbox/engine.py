@@ -43,6 +43,74 @@ def box_iou_3d(boxes1, boxes2):
     iou = intersection_volume / (union_volume + 1e-6)
     return iou, union_volume
 
+def box_iou_3d_elementwise(boxes1, boxes2):
+    """
+    3D Bounding Boxの要素ごと(ペア対応)のIoUを計算する。
+    boxes1[i]とboxes2[i]の組ごとにIoUを返す(pairwiseなbox_iou_3dのdiagonalと等価)。
+    boxes1, boxes2: (N, 6), format (x1, y1, z1, x2, y2, z2)
+    Returns: iou (N,)
+    """
+    vol1 = (boxes1[:, 3] - boxes1[:, 0]) * (boxes1[:, 4] - boxes1[:, 1]) * (boxes1[:, 5] - boxes1[:, 2])
+    vol2 = (boxes2[:, 3] - boxes2[:, 0]) * (boxes2[:, 4] - boxes2[:, 1]) * (boxes2[:, 5] - boxes2[:, 2])
+
+    inter_xyz1 = torch.max(boxes1[:, :3], boxes2[:, :3])
+    inter_xyz2 = torch.min(boxes1[:, 3:], boxes2[:, 3:])
+
+    inter_whd = (inter_xyz2 - inter_xyz1).clamp(min=0)
+
+    intersection_volume = inter_whd[:, 0] * inter_whd[:, 1] * inter_whd[:, 2]
+
+    union_volume = vol1 + vol2 - intersection_volume
+
+    iou = intersection_volume / (union_volume + 1e-6)
+    return iou
+
+def _get_permutation_idx(indices):
+    """matcherのindices(画像ごとのpred_idx/tgt_idxのリスト)から、
+    バッチ全体をまとめて添字付けするための(batch_idx, idx)を作る。"""
+    batch_idx = torch.cat([torch.full_like(idx, i) for i, (idx, _) in enumerate(indices)])
+    flat_idx = torch.cat([idx for (idx, _) in indices])
+    return batch_idx, flat_idx
+
+def compute_batch_matching_stats(outputs, targets, indices):
+    """matcherのindicesを使い、画像ごとのループを使わずに
+    accuracy/iou(画像ごとの平均のバッチ平均)とtotal_tp/total_fnを計算する。"""
+    bs = len(indices)
+    device = outputs['pred_logits'].device
+
+    batch_idx, pred_idx = _get_permutation_idx(indices)
+    tgt_idx = torch.cat([tgt for (_, tgt) in indices])
+
+    tgt_labels = torch.cat([t['labels'][tgt] for t, (_, tgt) in zip(targets, indices)])
+    tgt_boxes = torch.cat([t['boxes'][tgt] for t, (_, tgt) in zip(targets, indices)])
+
+    predicted_logits = outputs['pred_logits'][batch_idx, pred_idx]
+    predicted_labels = predicted_logits.argmax(-1)
+    correct = predicted_labels == tgt_labels
+
+    predicted_boxes = outputs['pred_boxes'][batch_idx, pred_idx]
+    iou_per_pair = box_iou_3d_elementwise(
+        box_cxcywhd_to_xyzxyz(predicted_boxes),
+        box_cxcywhd_to_xyzxyz(tgt_boxes)
+    )
+
+    counts = torch.zeros(bs, device=device)
+    counts.scatter_add_(0, batch_idx, torch.ones_like(batch_idx, dtype=counts.dtype))
+
+    acc_sum = torch.zeros(bs, device=device)
+    acc_sum.scatter_add_(0, batch_idx, correct.float())
+    per_image_acc = acc_sum / counts
+
+    iou_sum = torch.zeros(bs, device=device)
+    iou_sum.scatter_add_(0, batch_idx, iou_per_pair)
+    per_image_iou = iou_sum / counts
+
+    total_tp = correct.sum()
+    total_gt = sum(len(t['labels']) for t in targets)
+    total_fn = total_gt - tgt_idx.numel()
+
+    return per_image_acc.mean(), per_image_iou.mean(), total_tp, total_fn
+
 def calculate_ap_3d(all_preds, all_gts, num_classes, iou_thresholds):
     """
     3D BBox用のAverage Precision (AP) を計算する。
@@ -223,40 +291,16 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
         with torch.no_grad():
-            indices = criterion.matcher(outputs, targets)
-            batch_acc = []
-            batch_iou = []
-            
-            total_tp = 0
-            total_fn = 0
+            indices = criterion.last_indices
+            if indices:
+                acc, iou, total_tp_tensor, total_fn = compute_batch_matching_stats(outputs, targets, indices)
+                total_tp = total_tp_tensor.item()
+                metric_logger.update(accuracy=acc)
+                metric_logger.update(iou=iou)
+            else:
+                total_tp = 0
+                total_fn = 0
 
-            for i, (pred_idx, tgt_idx) in enumerate(indices):
-                predicted_logits = outputs['pred_logits'][i, pred_idx]
-                predicted_labels = predicted_logits.argmax(-1)
-                
-                target_labels = targets[i]['labels'][tgt_idx]
-                acc = (predicted_labels == target_labels).float().mean()
-                batch_acc.append(acc)
-
-                predicted_boxes_6d = outputs['pred_boxes'][i, pred_idx]
-                target_boxes_6d = targets[i]['boxes'][tgt_idx]
-
-                iou, _ = box_iou_3d(
-                    box_cxcywhd_to_xyzxyz(predicted_boxes_6d), 
-                    box_cxcywhd_to_xyzxyz(target_boxes_6d)
-                )
-                iou = iou.diag().mean()
-                batch_iou.append(iou)
-
-                total_tp += (predicted_labels == target_labels).sum().item()
-                total_fn += len(targets[i]['labels']) - len(tgt_idx)
-
-
-            if batch_acc:
-                 metric_logger.update(accuracy=torch.stack(batch_acc).mean())
-            if batch_iou:
-                 metric_logger.update(iou=torch.stack(batch_iou).mean())
-            
             pred_logits = outputs['pred_logits']
             background_class_idx = pred_logits.shape[-1] - 1
             num_predictions_as_object = (pred_logits.argmax(-1) != background_class_idx).sum().item()
@@ -346,32 +390,14 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         if 'loss_center' in loss_dict_reduced_scaled:
             metric_logger.update(loss_center=loss_dict_reduced_scaled['loss_center'])
         metric_logger.update(class_error=loss_dict_reduced['class_error'])
-        indices = criterion.matcher(outputs, targets)
+        indices = criterion.last_indices
 
-        batch_acc = []
-        batch_iou = []
-        total_tp = 0
-        total_fn = 0
-        for i, (pred_idx, tgt_idx) in enumerate(indices):
-            predicted_logits = outputs['pred_logits'][i, pred_idx]
-            predicted_labels = predicted_logits.argmax(-1)
-            target_labels = targets[i]['labels'][tgt_idx]
-
-            acc = (predicted_labels == target_labels).float().mean()
-            batch_acc.append(acc)
-
-            predicted_boxes_6d = outputs['pred_boxes'][i, pred_idx]
-            target_boxes_6d = targets[i]['boxes'][tgt_idx]
-
-            iou, _ = box_iou_3d(
-                box_cxcywhd_to_xyzxyz(predicted_boxes_6d), 
-                box_cxcywhd_to_xyzxyz(target_boxes_6d)
-            )
-            iou = iou.diag().mean()
-            batch_iou.append(iou)
-            
-            total_tp += (predicted_labels == target_labels).sum().item()
-            total_fn += len(targets[i]['labels']) - len(tgt_idx)
+        if indices:
+            acc, iou, total_tp_tensor, total_fn = compute_batch_matching_stats(outputs, targets, indices)
+            total_tp = total_tp_tensor.item()
+        else:
+            acc, iou = None, None
+            total_tp, total_fn = 0, 0
 
         pred_logits = outputs['pred_logits']
         background_class_idx = pred_logits.shape[-1] - 1
@@ -393,10 +419,10 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
                 avg_dist_error = distances.mean().item()
                 metric_logger.update(CNN_error=avg_dist_error)
         
-        if batch_acc:
-             metric_logger.update(accuracy=torch.stack(batch_acc).mean())
-        if batch_iou:
-             metric_logger.update(iou=torch.stack(batch_iou).mean())
+        if acc is not None:
+             metric_logger.update(accuracy=acc)
+        if iou is not None:
+             metric_logger.update(iou=iou)
         if not np.isnan(f1_score):
              metric_logger.update(f1_score=f1_score)
 
