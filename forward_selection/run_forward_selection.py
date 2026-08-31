@@ -54,22 +54,22 @@ REAL_TEST = "keita_2026_0617/1_tsunoda_1_test"
 
 AXIS_CASES = {
     "A": [
-        "sim_test_02/A/A_N1_1x1",
-        "sim_test_02/A/A_N4_2x2",
-        "sim_test_02/A/A_N9_3x3",
-        "sim_test_02/A/A_N16_4x4",
-        "sim_test_02/A/A_N25_5x5",
-        "sim_test_02/A/A_N36_6x6",
+        "sim_test_03/A/A_N1_1x1",
+        "sim_test_03/A/A_N4_2x2",
+        "sim_test_03/A/A_N9_3x3",
+        "sim_test_03/A/A_N16_4x4",
+        "sim_test_03/A/A_N25_5x5",
+        "sim_test_03/A/A_N36_6x6",
     ],
     "B": [
-        "sim_test_02/B/B_d0.5_N9",
-        "sim_test_02/B/B_d0.75_N9",
-        "sim_test_02/B/B_d1.0_N9",
-        "sim_test_02/B/B_d1.25_N9",
-        "sim_test_02/B/B_d1.5_N9",
-        "sim_test_02/B/B_d2.0_N9",
-        "sim_test_02/B/B_d2.5_N9",
-        "sim_test_02/B/B_d3.0_N9",
+        "sim_test_03/B/B_d0.5_N9",
+        "sim_test_03/B/B_d0.75_N9",
+        "sim_test_03/B/B_d1.0_N9",
+        "sim_test_03/B/B_d1.25_N9",
+        "sim_test_03/B/B_d1.5_N9",
+        "sim_test_03/B/B_d2.0_N9",
+        "sim_test_03/B/B_d2.5_N9",
+        "sim_test_03/B/B_d3.0_N9",
     ],
 }
 
@@ -280,7 +280,7 @@ def run_axis(axis, state_dir, dry_run):
             candidate_metrics = {}
             for case in remaining:
                 trial_set = base + [case]
-                exp_name = f"fwdsel_{axis}/step{size}_add_{case_short(case)}"
+                exp_name = f"fwdsel_{axis}_sim03/step{size}_add_{case_short(case)}"
                 metrics = ensure_result(
                     train_names=[REAL_TRAIN, *trial_set],
                     val_name=REAL_VAL,
@@ -320,7 +320,7 @@ def run_axis(axis, state_dir, dry_run):
         final_key = str(size)
         if state["finals"].get(final_key) is not None:
             continue
-        exp_name = f"fwdsel_{axis}/final_size{size}"
+        exp_name = f"fwdsel_{axis}_sim03/final_size{size}"
         metrics = ensure_result(
             train_names=[REAL_TRAIN, *combo],
             val_name=REAL_VAL,

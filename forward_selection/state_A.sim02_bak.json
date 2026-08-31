@@ -1,0 +1,17 @@
+{
+  "steps": {
+    "1": {
+      "base": [],
+      "candidates": {
+        "sim_test_02/A/A_N1_1x1": {
+          "test_accuracy": 0.9033,
+          "test_ap": 0.3305,
+          "test_ap50": 0.5943,
+          "test_ap75": 0.3356
+        }
+      },
+      "winner": null
+    }
+  },
+  "finals": {}
+}

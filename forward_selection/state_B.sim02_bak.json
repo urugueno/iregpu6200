@@ -1,0 +1,59 @@
+{
+  "steps": {
+    "1": {
+      "base": [],
+      "candidates": {
+        "sim_test_02/B/B_d0.5_N9": {
+          "test_accuracy": 0.0,
+          "test_ap": 0.0,
+          "test_ap50": 0.0,
+          "test_ap75": 0.0
+        },
+        "sim_test_02/B/B_d0.75_N9": {
+          "test_accuracy": 0.0,
+          "test_ap": 0.0,
+          "test_ap50": 0.0,
+          "test_ap75": 0.0
+        },
+        "sim_test_02/B/B_d1.0_N9": {
+          "test_accuracy": 0.0,
+          "test_ap": 0.0,
+          "test_ap50": 0.0,
+          "test_ap75": 0.0
+        },
+        "sim_test_02/B/B_d1.25_N9": {
+          "test_accuracy": 0.0,
+          "test_ap": 0.0,
+          "test_ap50": 0.0,
+          "test_ap75": 0.0
+        },
+        "sim_test_02/B/B_d1.5_N9": {
+          "test_accuracy": 0.0,
+          "test_ap": 0.0,
+          "test_ap50": 0.0,
+          "test_ap75": 0.0
+        },
+        "sim_test_02/B/B_d2.0_N9": {
+          "test_accuracy": 0.0,
+          "test_ap": 0.0,
+          "test_ap50": 0.0,
+          "test_ap75": 0.0
+        },
+        "sim_test_02/B/B_d2.5_N9": {
+          "test_accuracy": 0.0,
+          "test_ap": 0.0,
+          "test_ap50": 0.0,
+          "test_ap75": 0.0
+        },
+        "sim_test_02/B/B_d3.0_N9": {
+          "test_accuracy": 0.0,
+          "test_ap": 0.0,
+          "test_ap50": 0.0,
+          "test_ap75": 0.0
+        }
+      },
+      "winner": null
+    }
+  },
+  "finals": {}
+}
