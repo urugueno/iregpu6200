@@ -102,7 +102,7 @@ def run(args):
 
     run_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    PRIMARY_NAS_PATH = ""
+    PRIMARY_NAS_PATH = "/nas/data_2/ueno1212/light"
     SECONDARY_NAS_PATH = ""
     
     if os.path.isdir(PRIMARY_NAS_PATH):
