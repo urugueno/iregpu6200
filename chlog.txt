@@ -1,0 +1,13 @@
+Changelog
+=========
+Format: [YYYY-MM-DD] branch: summary of what changed and why.
+
+[2026-09-03] new-arki-detr: Replaced Illuminance_bbox/{engine,main}.py, datasets/, models/, util/
+  with the cleaned-up Illuminance_DETR implementation. Adds --task pose support, consolidates
+  --environment PE/query/PE_query/sub/sequence into EE/EQ, drops sparse/reductionCNNmse/
+  reductionCNNgumbel/reductionAttentiongumbel scale modes and the center-coordinate CNN head,
+  removes unused DDP code and dead segmentation.py. Dropped device0-3 experiment scripts.
+
+[2026-09-03] new-arki-detr: Renamed Illuminance_bbox -> Illuminance_DETR. Fixed PRIMARY_NAS_PATH
+  back to /nas/data_2/ueno1212/light (was falling back to nonexistent ./data). Added
+  comp_try/comp_try.sh as a smoke-test invocation of the DETR pipeline.
