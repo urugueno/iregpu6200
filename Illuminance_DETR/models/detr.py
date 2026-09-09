@@ -43,7 +43,7 @@ class DETR(nn.Module):
 
         self.env_query_cnn = None
         if self.args is not None:
-            if self.args.environment == 'EQ':
+            if self.args.environment in ('EQ', 'PE_query'):
                 self.env_query_cnn = EQCNN(
                     input_dim=self.args.actual_num_sensors,
                     hidden_dim=hidden_dim,

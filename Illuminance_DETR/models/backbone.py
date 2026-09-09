@@ -153,7 +153,7 @@ class TimeSensorBackbone(nn.Module):
         self.model_mode = model_mode
 
         self.env_projection = None
-        if self.args.environment == 'EE':
+        if self.args.environment in ('EE', 'PE_query'):
             self.env_projection = nn.Linear(num_sensors, hidden_dim)
         
         self.confidence_cnn = None
@@ -180,7 +180,7 @@ class TimeSensorBackbone(nn.Module):
         C = self.num_channels
 
         env_pe = None
-        if self.args.environment == 'EE':
+        if self.args.environment in ('EE', 'PE_query'):
             env_vector = samples_dict['env_vector']
             env_pe = self.env_projection(env_vector)
 
@@ -272,7 +272,7 @@ class TimeSensorBackbone(nn.Module):
             spatial_pe = self.spatial_pe_generator(coords)
             total_pe = total_pe + spatial_pe.unsqueeze(1)
 
-        if self.args.environment == 'EE' and env_pe is not None:
+        if self.args.environment in ('EE', 'PE_query') and env_pe is not None:
             total_pe = total_pe + env_pe.unsqueeze(1).unsqueeze(2)
 
         features_reshaped = features.permute(0, 3, 1, 2)

@@ -91,7 +91,7 @@ def get_args_parser():
                                  'time_sensor_no_sensor_pe', 'time_sensor_no_pe', 'time_sensor_wifi_like'])
     parser.add_argument('--scale', type=str, default='full', 
                         choices=['full', 'reductionCNNconfidence', 'reductionVariance', 'reductionAttention'])
-    parser.add_argument('--environment', type=str, default='none', choices=['none', 'EE', 'EQ'])
+    parser.add_argument('--environment', type=str, default='none', choices=['none', 'EE', 'EQ', 'PE_query'])
     return parser
 
 def run(args):

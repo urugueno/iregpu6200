@@ -11,3 +11,9 @@ Format: [YYYY-MM-DD] branch: summary of what changed and why.
 [2026-09-03] new-arki-detr: Renamed Illuminance_bbox -> Illuminance_DETR. Fixed PRIMARY_NAS_PATH
   back to /nas/data_2/ueno1212/light (was falling back to nonexistent ./data). Added
   comp_try/comp_try.sh as a smoke-test invocation of the DETR pipeline.
+
+[2026-09-09] new-arki-detr: Re-added 'PE_query' as an --environment choice, dropped when EE/EQ
+  were consolidated. Extends the EE branches in models/backbone.py (env_projection init, env_pe
+  compute, and its addition to total_pe) and the EQ branch in models/detr.py (env_query_cnn init)
+  to also trigger on 'PE_query', and adds it to the collate_fn env_vector-batching check in
+  util/misc.py, so it enables EE and EQ together like it did before the cleanup.
