@@ -141,20 +141,38 @@ class IlluminanceDetectionDataset(Dataset):
         if args.environment != 'none':
             self.environment_vectors = []
             all_selected_columns_map = {col: i for i, col in enumerate(self.selected_columns)}
-            
+            N_selected = len(self.selected_columns)
+
+            env_mean_aligned = None
+            env_std_eps_aligned = None
+            env_mean = getattr(args, 'env_mean', None)
+            env_std = getattr(args, 'env_std', None)
+            env_column_names = getattr(args, 'env_column_names', None)
+            if env_mean is not None and env_std is not None:
+                env_col_map = {name: k for k, name in enumerate(env_column_names)}
+                env_mean_aligned = torch.zeros(N_selected, dtype=torch.float32)
+                env_std_eps_aligned = torch.ones(N_selected, dtype=torch.float32)
+                for col_name, selected_idx in all_selected_columns_map.items():
+                    if col_name in env_col_map:
+                        env_idx = env_col_map[col_name]
+                        env_mean_aligned[selected_idx] = env_mean[env_idx]
+                        env_std_eps_aligned[selected_idx] = env_std[env_idx] + 1e-6
+
             for i, (raw_vec_tensor, raw_names) in enumerate(zip(self.environment_vectors_raw, self.all_env_sensor_names)):
                 raw_vec_mean = raw_vec_tensor.mean(dim=1)
-                
+
                 raw_map = {name: k for k, name in enumerate(raw_names)}
-                N_selected = len(self.selected_columns)
-                
+
                 aligned_vector = torch.zeros(N_selected, dtype=torch.float32)
-                
+
                 for col_name, selected_idx in all_selected_columns_map.items():
                     if col_name in raw_map:
                         raw_idx = raw_map[col_name]
                         aligned_vector[selected_idx] = raw_vec_mean[raw_idx]
-                        
+
+                if env_mean_aligned is not None:
+                    aligned_vector = (aligned_vector - env_mean_aligned) / env_std_eps_aligned
+
                 self.environment_vectors.append(aligned_vector)
 
         header_ref_path = illuminance_csv_path[0] if is_list_input else illuminance_csv_path

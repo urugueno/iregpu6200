@@ -65,12 +65,15 @@ class DETR(nn.Module):
         src, mask = features[-1].decompose()
         assert mask is not None
 
-        hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1], attn_mask=attn_mask)[0]
-
+        query_embed = self.query_embed.weight
         if self.env_query_cnn is not None:
             env_vector = samples['env_vector']
-            env_query_pe = self.env_query_cnn(env_vector)
-            hs = hs + env_query_pe.unsqueeze(0).unsqueeze(2)
+            env_query_pe = self.env_query_cnn(env_vector)  # [B, hidden_dim]
+            # q'_i = q_i + psi(e): per-sample env vector added to the Object
+            # Query fed into the decoder, not to the decoder's final output.
+            query_embed = query_embed.unsqueeze(1) + env_query_pe.unsqueeze(0)  # [N, B, hidden_dim]
+
+        hs = self.transformer(self.input_proj(src), mask, query_embed, pos[-1], attn_mask=attn_mask)[0]
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.coord_embed(hs).sigmoid()

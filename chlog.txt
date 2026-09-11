@@ -17,3 +17,73 @@ Format: [YYYY-MM-DD] branch: summary of what changed and why.
   compute, and its addition to total_pe) and the EQ branch in models/detr.py (env_query_cnn init)
   to also trigger on 'PE_query', and adds it to the collate_fn env_vector-batching check in
   util/misc.py, so it enables EE and EQ together like it did before the cleanup.
+
+[2026-09-09] new-arki-detr: Fixed main.py optimizer param-group filter for EQ/PE_query: the
+  Illuminance_bbox -> Illuminance_DETR cleanup (2026-09-03) renamed the filter string from
+  "env_query_cnn" to "eq_cnn", which no longer matches the actual module attribute
+  self.env_query_cnn (models/detr.py), so its params silently fell into base_params at the
+  normal LR instead of the intended 10x cnn_lr. This let the EQCNN's post-LayerNorm additive
+  injection into hs (models/detr.py) saturate the box sigmoid at init and never recover within
+  early_stopping_patience=50, causing --environment EQ/PE_query runs to collapse to 0 IoU/mAP
+  for the entire run (confirmed by comparing against tmp/Illuminance_bbox, where the correct
+  filter let env_query_cnn escape the same initial bad state within ~5 epochs). Restored the
+  filter to match "env_query_cnn".
+
+[2026-09-10] new-arki-detr: Forked from new_model into new_model2 to reimplement EQ's injection
+  point per the source thesis (IE202603, 播口響). The thesis defines EQ as q'_i = q_i + psi(e),
+  explicitly describing q_i as "the Decoder-side input" (図3 also draws the environment vector and
+  Object Query both feeding into the Decoder's input side, mirroring how EE feeds x_t + p_t + e
+  into the Encoder's input). Every prior generation of this code (base2's original
+  DETR_light_3d_20251228_eequery implementation, tmp/Illuminance_bbox, new_model/base,
+  new_model/Illuminance_DETR, and light/Illuminance_bbox) instead added psi(e) to the decoder's
+  *final* output hs (models/detr.py, after decoder_norm, immediately before coord_embed's
+  sigmoid) -- a different injection point than the thesis describes, and architecturally fragile
+  since it bypasses the per-layer LayerNorm renormalization that keeps EE's equivalent addition
+  (into pos, consumed by every encoder layer's attention) numerically safe.
+
+  Changed models/detr.py: build query_embed as self.query_embed.weight.unsqueeze(1) +
+  env_query_pe.unsqueeze(0) (shape [N, B, hidden_dim]) before calling self.transformer(...),
+  instead of adding env_query_pe to hs afterward. Changed models/transformer.py
+  Transformer.forward to accept a pre-batched 3D query_embed ([N, B, hidden_dim]) as-is, only
+  applying the old unsqueeze(1).repeat(1, bs, 1) broadcast when a 2D ([N, hidden_dim]) tensor is
+  passed (i.e. every non-EQ/PE_query mode, unaffected). This routes psi(e) through query_pos in
+  every decoder self-/cross-attention layer, getting renormalized by norm1/norm2/norm3 each layer
+  like EE's pos-side addition, rather than landing unnormalized right before the box sigmoid.
+
+  Smoke-tested with --environment EQ, --epochs 2 --n_runs 1 (train
+  keita_2026_0617/1_tsunoda_1_train + sim_test_01/loop1): no shape errors, loss_bbox starts at
+  ~1.6-2.9 and iou is nonzero from epoch 1 (0.02-0.34) -- neither the loss_bbox~13 / iou==0
+  collapse pattern seen before the main.py typo fix, nor the pattern relying on it to recover.
+  Not yet run to convergence; only main.py's eq_cnn typo fix (already applied, see prior entry)
+  carried over unchanged, plus this detr.py/transformer.py injection-point change.
+
+[2026-09-11] new-arki-detr: Found and fixed the actual cause of EQ/PE_query's 100% class_error /
+  0 AP full-run collapse (basic_comp/sim_num1_not_sim/sim_EQ.txt, sim_PE_query.txt, both run
+  2026-09-10 after the query_pos injection-point change above, so that change alone did not fix
+  it): environment.csv values are never normalized anywhere in the pipeline, unlike light.csv
+  (datasets/dataset.py already applies args.mean/args.std to the illuminance tensor). Raw env
+  values run ~500-1500 (measured: real keita_2026_0617 mean 623.6/std 28.6, sim sim_test_01/loop1
+  mean 1357.7/std 77.9). Fed through EQCNN's freshly-initialized Linear(36,256)->ReLU->Linear
+  (models/detr.py), this produces env_query_pe with std ~147, vs the learned query_embed's
+  (nn.Embedding) std ~1.0 -- a ~150x scale mismatch, measured by direct simulation. Since
+  transformer.py's decoder does tgt = torch.zeros_like(query_embed) and with_pos_embed(tgt,
+  query_pos) = tgt + query_pos feeds Q/K *before* norm1/norm2/norm3 are applied, this
+  150x-oversized, near-identical-across-all-N-queries bias saturates the very first
+  self-attention layer's QK^T logits, regardless of the injection-point fix -- LayerNorm
+  renormalizes the residual output afterward but never rescales the raw sum that Q/K are computed
+  from. This explains why EE alone (env_pe added into backbone.py's total_pe, mixed with
+  already-populated encoder features rather than a zeroed decoder tgt) degrades gracefully
+  instead of collapsing, and why PE_query (EE+EQ) collapses just like EQ alone.
+
+  Changed main.py: added an args.standardize-gated block (mirroring the existing light.csv
+  mean/std block) that reads args.train_environment_path, computes per-column mean/std from
+  environment.csv, and stores them as args.env_mean/args.env_std/args.env_column_names when
+  args.environment != 'none'. Changed datasets/dataset.py's environment_vectors construction to
+  align env_mean/env_std to self.selected_columns by column name (same pattern the existing
+  aligned_vector build already uses) and apply (x - mean) / (std + 1e-6) to each environment
+  vector, so env_query_cnn and env_projection both now receive O(1)-scale input like the
+  illuminance tensor does. Verified via direct simulation (not a full training run): normalized
+  env vectors now have std ~2e-4 (per-sample sensor variation, dwarfed by the ~1.2-2.5 cross-source
+  mean shift, both harmless at this scale) instead of raw ~30-1500, and EQCNN's output std drops
+  to ~0.20, matching query_embed's ~1.0 order of magnitude instead of exceeding it 150x. Not yet
+  re-run through basic_comp/sim_num1_not_sim to confirm the AP/class_error recovery end-to-end.

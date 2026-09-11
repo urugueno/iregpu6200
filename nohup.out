@@ -1,0 +1,38 @@
+=== [1/4] sim_EE.sh (env=EE) ===
+python: can't open file 'Illuminance_DETR/main.py': [Errno 2] No such file or directory
+=== [1/4] done ===
+=== [2/4] sim_EQ.sh (env=EQ) ===
+python: can't open file 'Illuminance_DETR/main.py': [Errno 2] No such file or directory
+=== [2/4] done ===
+=== [3/4] sim_PE_query.sh (env=PE_query) ===
+python: can't open file 'Illuminance_DETR/main.py': [Errno 2] No such file or directory
+=== [3/4] done ===
+=== [4/4] not_sim.sh (env=none, no sim data) ===
+python: can't open file 'Illuminance_DETR/main.py': [Errno 2] No such file or directory
+=== [4/4] done ===
+=== All sim_num1_not_sim experiments finished ===
+=== [1/4] sim_EE.sh (env=EE) ===
+=== [1/4] done ===
+=== [2/4] sim_EQ.sh (env=EQ) ===
+=== [2/4] done ===
+=== [3/4] sim_PE_query.sh (env=PE_query) ===
+=== [3/4] done ===
+=== [4/4] not_sim.sh (env=none, no sim data) ===
+=== [4/4] done ===
+=== All sim_num1_not_sim experiments finished ===
+=== [1/4] sim_EE.sh (env=EE) ===
+=== [1/4] done ===
+=== [2/4] sim_EQ.sh (env=EQ) ===
+=== [2/4] done ===
+=== [3/4] sim_PE_query.sh (env=PE_query) ===
+=== [3/4] done ===
+=== [4/4] not_sim.sh (env=none, no sim data) ===
+=== [4/4] done ===
+=== All sim_num1_not_sim experiments finished ===
+=== [1/4] sim_EE.sh (env=EE) ===
+=== [1/4] done ===
+=== [2/4] sim_EQ.sh (env=EQ) ===
+=== [2/4] done ===
+=== [3/4] sim_PE_query.sh (env=PE_query) ===
+=== [3/4] done ===
+=== All sim_num1_not_sim experiments finished ===

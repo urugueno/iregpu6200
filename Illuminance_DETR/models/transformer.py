@@ -36,7 +36,11 @@ class Transformer(nn.Module):
         bs, c, h, w = src.shape
         src = src.flatten(2).permute(2, 0, 1)
         pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
-        query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
+        if query_embed.dim() == 2:
+            # [num_queries, hidden_dim] -> broadcast to every batch item
+            query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
+        # else: caller already built a per-sample [num_queries, bs, hidden_dim]
+        # query embedding (e.g. EQ's q_i + psi(e)); use it as-is.
         mask = mask.flatten(1)
 
         tgt = torch.zeros_like(query_embed)
