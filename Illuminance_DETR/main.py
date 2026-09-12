@@ -177,31 +177,6 @@ def run(args):
         args.mean = None
         args.std = None
 
-    if args.standardize and args.environment != 'none':
-        env_train_paths = args.train_environment_path
-        env_df_list = []
-        for p in env_train_paths:
-            df = pd.read_csv(p)
-
-            if args.do_split:
-                num_train = int(len(df) * args.train_ratio)
-                df = df.iloc[:num_train]
-
-            env_df_list.append(df)
-
-        full_train_env_df = pd.concat(env_df_list, ignore_index=True)
-        env_columns = [col for col in full_train_env_df.columns if col != 'timestamp']
-        env_df = full_train_env_df[env_columns]
-
-        args.env_column_names = env_columns
-        args.env_mean = torch.tensor(env_df.mean().values, dtype=torch.float32)
-        args.env_std = torch.tensor(env_df.std().values, dtype=torch.float32)
-
-    else:
-        args.env_column_names = None
-        args.env_mean = None
-        args.env_std = None
-
     all_sensor_columns = pd.read_csv(args.train_illuminance_path[0], nrows=0).columns.tolist()[1:]
     
     if 0 < args.num_sensors < len(all_sensor_columns):

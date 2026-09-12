@@ -153,7 +153,9 @@ class TimeSensorBackbone(nn.Module):
         self.model_mode = model_mode
 
         self.env_projection = None
+        self.env_norm = None
         if self.args.environment in ('EE', 'PE_query'):
+            self.env_norm = nn.LayerNorm(num_sensors)
             self.env_projection = nn.Linear(num_sensors, hidden_dim)
         
         self.confidence_cnn = None
@@ -182,7 +184,7 @@ class TimeSensorBackbone(nn.Module):
         env_pe = None
         if self.args.environment in ('EE', 'PE_query'):
             env_vector = samples_dict['env_vector']
-            env_pe = self.env_projection(env_vector)
+            env_pe = self.env_projection(self.env_norm(env_vector))
 
         selected_sensor_indices = None
 

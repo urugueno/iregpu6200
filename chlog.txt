@@ -87,3 +87,22 @@ Format: [YYYY-MM-DD] branch: summary of what changed and why.
   mean shift, both harmless at this scale) instead of raw ~30-1500, and EQCNN's output std drops
   to ~0.20, matching query_embed's ~1.0 order of magnitude instead of exceeding it 150x. Not yet
   re-run through basic_comp/sim_num1_not_sim to confirm the AP/class_error recovery end-to-end.
+
+[2026-09-12] env-layernorm-scale: Branched from new-arki-detr to compare the env_mean/env_std
+  dataset-stats standardization above against nn.LayerNorm applied inside the model instead.
+  Commented out (not deleted, for reference) main.py's env_mean/env_std/env_column_names
+  computation block and datasets/dataset.py's alignment/application of it to env_vector, which is
+  now passed through raw (per-sensor time-window mean only, unnormalized). Added
+  self.env_norm = nn.LayerNorm(num_sensors) in models/backbone.py, applied to env_vector before
+  self.env_projection (EE path). Added self.norm = nn.LayerNorm(input_dim) inside EQCNN
+  (models/detr.py), applied before fc1 (EQ path). light.csv's illuminance standardization
+  (main.py's args.mean/args.std block, dataset.py's self.mean/self.std application) is untouched.
+
+  Smoke-tested with --environment PE_query --epochs 2 --n_runs 1 (train
+  keita_2026_0617/1_tsunoda_1_train + sim_test_01/loop1, exp_name env_layernorm_smoketest): no
+  shape errors, exit code 0. loss_bbox declines monotonically within/across epochs (6.09 -> 1.51
+  epoch 0, 1.58 -> 0.86 epoch 1), iou nonzero from the first batch (0.053) and rises to 0.49 by end
+  of epoch 1 -- no sign of the query_pos-saturation collapse the env_mean/env_std fix above was
+  written to solve. class_error/mAP still 0 at this point, expected for a 2-epoch run, not
+  evaluated for convergence. Not yet run to convergence or compared against the stats-normalization
+  baseline on new-arki-detr.
